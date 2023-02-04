@@ -71,7 +71,7 @@ import (
 type CSIScaleOperatorReconciler struct {
 	Client        client.Client
 	Scheme        *runtime.Scheme
-	recorder      record.EventRecorder
+	Recorder      record.EventRecorder
 	serverVersion string
 }
 
@@ -85,6 +85,8 @@ var csiLog = log.Log.WithName("csiscaleoperator_controller")
 type reconciler func(instance *csiscaleoperator.CSIScaleOperator) error
 
 var crStatus = csiv1.CSIScaleOperatorStatus{}
+
+var operatorInstance *csiscaleoperator.CSIScaleOperator
 
 //A map of changed clusters, used to process only changed
 //clusters in case of clusters stanza is modified
@@ -138,7 +140,7 @@ func (r *CSIScaleOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// Fetch the CSIScaleOperator instance
 	logger.Info("Fetching CSIScaleOperator instance.")
 	instance := csiscaleoperator.New(&csiv1.CSIScaleOperator{})
-
+	operatorInstance = instance
 	instanceUnwrap := instance.Unwrap()
 	var err error
 	err = r.Client.Get(ctx, req.NamespacedName, instanceUnwrap)
@@ -366,7 +368,7 @@ func (r *CSIScaleOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	// Synchronizing cluster configMap
 	csiConfigmapSyncer := clustersyncer.CSIConfigmapSyncer(r.Client, r.Scheme, instance)
-	if err := syncer.Sync(context.TODO(), csiConfigmapSyncer, r.recorder); err != nil {
+	if err := syncer.Sync(context.TODO(), csiConfigmapSyncer, nil); err != nil {
 		message := "Synchronization of " + config.CSIConfigMap + " ConfigMap failed."
 		logger.Error(err, message)
 		// TODO: Add event.
@@ -385,7 +387,7 @@ func (r *CSIScaleOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 	csiControllerSyncer := clustersyncer.GetAttacherSyncer(r.Client, r.Scheme, instance)
-	if err := syncer.Sync(context.TODO(), csiControllerSyncer, r.recorder); err != nil {
+	if err := syncer.Sync(context.TODO(), csiControllerSyncer, nil); err != nil {
 		message := "Synchronization of attacher interface failed."
 		logger.Error(err, message)
 		// TODO: Add event.
@@ -404,7 +406,7 @@ func (r *CSIScaleOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 	csiControllerSyncerProvisioner := clustersyncer.GetProvisionerSyncer(r.Client, r.Scheme, instance)
-	if err := syncer.Sync(context.TODO(), csiControllerSyncerProvisioner, r.recorder); err != nil {
+	if err := syncer.Sync(context.TODO(), csiControllerSyncerProvisioner, nil); err != nil {
 		message := "Synchronization of provisioner interface failed."
 		logger.Error(err, message)
 		// TODO: Add event.
@@ -423,7 +425,7 @@ func (r *CSIScaleOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 	csiControllerSyncerSnapshotter := clustersyncer.GetSnapshotterSyncer(r.Client, r.Scheme, instance)
-	if err := syncer.Sync(context.TODO(), csiControllerSyncerSnapshotter, r.recorder); err != nil {
+	if err := syncer.Sync(context.TODO(), csiControllerSyncerSnapshotter, nil); err != nil {
 		message := "Synchronization of snapshotter interface failed."
 		logger.Error(err, message)
 		// TODO: Add event.
@@ -442,7 +444,7 @@ func (r *CSIScaleOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 	csiControllerSyncerResizer := clustersyncer.GetResizerSyncer(r.Client, r.Scheme, instance)
-	if err := syncer.Sync(context.TODO(), csiControllerSyncerResizer, r.recorder); err != nil {
+	if err := syncer.Sync(context.TODO(), csiControllerSyncerResizer, nil); err != nil {
 		message := "Synchronization of resizer interface failed."
 		logger.Error(err, message)
 		// TODO: Add event.
@@ -487,7 +489,7 @@ func (r *CSIScaleOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	csiNodeSyncer := clustersyncer.GetCSIDaemonsetSyncer(r.Client, r.Scheme, instance, daemonSetRestartedKey, daemonSetRestartedValue, CGPrefix, symlinkDirPath, cmData)
-	if err := syncer.Sync(context.TODO(), csiNodeSyncer, r.recorder); err != nil {
+	if err := syncer.Sync(context.TODO(), csiNodeSyncer, nil); err != nil {
 		message := "Synchronization of node/driver interface failed."
 		logger.Error(err, message)
 		// TODO: Add event.
@@ -2424,4 +2426,59 @@ func parseConfigMap(cm *corev1.ConfigMap) map[string]string {
 	}
 	logger.Info("Parsing the data from the optional configmap is successful", "configmap", config.CSIEnvVarConfigMap)
 	return data
+}
+
+func GetPasswdExpiredGUIs(r *CSIScaleOperatorReconciler) {
+	logger := csiLog.WithName("GetPasswdExpireGUIs")
+	if len(operatorInstance.Spec.Clusters) > 0 {
+		expiredGUIs := listPasswdExpiredGUIs(operatorInstance.Spec.Clusters)
+		if len(expiredGUIs) > 0 {
+			message := fmt.Sprintf("Either the username/password is incorrect or the password is expired for the cluster id and GUI host pairs: %v", expiredGUIs)
+			logger.Info(message)
+			r.Recorder.Event(operatorInstance, corev1.EventTypeWarning, string(csiv1.ResourceConfigError), message)
+			meta.SetStatusCondition(&crStatus.Conditions, metav1.Condition{
+				Type:    string(config.StatusConditionSuccess),
+				Status:  metav1.ConditionFalse,
+				Reason:  string(csiv1.ResourceConfigError),
+				Message: message,
+			})
+		}
+	} else {
+		logger.Info("No cluster configuration found in the CR while checking GUI password expiry")
+	}
+}
+
+//listPasswdExpiredGUI returns a map having clusterId as key and GUI hosts as value, whose password is expired
+func listPasswdExpiredGUIs(clusters []v1.CSICluster) map[string]string {
+	logger := csiLog.WithName("listPasswdExpiredGUI")
+	logger.Info("Checking GUI host(s) for it's password expiry")
+	expiredGui := make(map[string]string)
+	for _, cls := range clusters {
+		if conn, ok := scaleConnMap[cls.Id]; ok {
+			_, err := conn.GetClusterId(context.TODO())
+			if err != nil && isUnauthorized(err) {
+				expiredGui[cls.Id] = extractGUIHost(err)
+			}
+		}
+	}
+	logger.Info("password expiry check for GUI host(s) is completed successfully")
+	return expiredGui
+}
+
+func isUnauthorized(err error) bool {
+	if strings.Contains(err.Error(), "Unauthorized") {
+		return true
+	}
+	return false
+}
+
+//extractGUIHost extracts GUI host from the error and returns it as a string
+func extractGUIHost(err error) string {
+	splits := strings.Split(err.Error(), " ")
+	for _, s := range splits {
+		if strings.HasPrefix(s, "https://") {
+			return s
+		}
+	}
+	return ""
 }

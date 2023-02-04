@@ -27,11 +27,11 @@ import (
 	"go.uber.org/zap/zapcore"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	"github.com/robfig/cron/v3"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
-
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -144,10 +144,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.CSIScaleOperatorReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	r := &controllers.CSIScaleOperatorReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("CSIScaleOperator"),
+	}
+	if err = r.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CSIScaleOperator")
 		os.Exit(1)
 	}
@@ -162,6 +164,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	cron := cron.New()
+	_, err = cron.AddFunc("@every 5m", func() {
+		controllers.GetPasswdExpiredGUIs(r)
+	})
+	if err != nil {
+		setupLog.Error(err, "Cron schedule for GetPasswdExpiredGUIs failed")
+	}
+	cron.Start()
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
