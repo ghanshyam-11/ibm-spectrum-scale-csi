@@ -10,6 +10,7 @@ require (
 	github.com/onsi/gomega v1.17.0
 	github.com/openshift/api v0.0.0-20220222102030-354aa98a475c
 	github.com/presslabs/controller-util v0.3.0
+	github.com/robfig/cron/v3 v3.0.1
 	go.uber.org/zap v1.19.1
 	k8s.io/api v0.23.4
 	k8s.io/apimachinery v0.23.4
