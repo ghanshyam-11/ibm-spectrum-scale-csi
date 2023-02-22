@@ -38,6 +38,7 @@ import (
 
 	csiv1 "github.com/IBM/ibm-spectrum-scale-csi/operator/api/v1"
 	"github.com/IBM/ibm-spectrum-scale-csi/operator/controllers"
+	"github.com/robfig/cron/v3"
 
 	configv1 "github.com/openshift/api/config/v1"
 	securityv1 "github.com/openshift/api/security/v1"
@@ -144,11 +145,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.CSIScaleOperatorReconciler{
+	r := &controllers.CSIScaleOperatorReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("CSIScaleOperator"),
-	}).SetupWithManager(mgr); err != nil {
+	}
+
+	if err = r.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CSIScaleOperator")
 		os.Exit(1)
 	}
@@ -161,6 +164,14 @@ func main() {
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
+	}
+
+	cron := cron.New()
+	_, err = cron.AddFunc("@every 5m", func() {
+		controllers.GetClustersWithGUIPasswdExpired(r)
+	})
+	if err != nil {
+		setupLog.Error(err, "Cron schedule for GetPasswdExpiredGUIs failed")
 	}
 
 	setupLog.Info("starting manager")
