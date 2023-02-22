@@ -173,7 +173,7 @@ func main() {
 	if err != nil {
 		setupLog.Error(err, "Cron schedule for GetPasswdExpiredGUIs failed")
 	}
-
+	cron.Start()
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
