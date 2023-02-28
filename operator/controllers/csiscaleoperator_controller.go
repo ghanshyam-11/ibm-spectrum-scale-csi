@@ -359,7 +359,13 @@ func (r *CSIScaleOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if err := r.removeDeprecatedStatefulset(instance, config.GetNameForResource(config.CSIControllerAttacher, instance.Name)); err != nil {
 		return ctrl.Result{}, err
 	}
-	csiControllerSyncer := clustersyncer.GetAttacherSyncer(r.Client, r.Scheme, instance, restartedAtKey, restartedAtValue)
+	var csiControllerSyncer syncer.Interface
+	if restartedAtKey != "" && restartedAtValue != "" {
+		time.Sleep(5 * time.Second)
+		csiControllerSyncer = clustersyncer.GetAttacherSyncer(r.Client, r.Scheme, instance, restartedAtKey, restartedAtValue)
+	} else {
+		csiControllerSyncer = clustersyncer.GetAttacherSyncer(r.Client, r.Scheme, instance, restartedAtKey, restartedAtValue)
+	}
 	if err := syncer.Sync(context.TODO(), csiControllerSyncer, nil); err != nil {
 		message := "Synchronization of " + config.GetNameForResource(config.CSIControllerAttacher, instance.Name) + " Deployment failed for the CSISCaleOperator instance " + instance.Name
 		logger.Error(err, message)
