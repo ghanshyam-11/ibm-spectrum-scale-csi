@@ -411,6 +411,13 @@ func (s *csiControllerSyncer) ensureAttacherPodSpec(secrets []corev1.LocalObject
 	tolerations := s.driver.Spec.Tolerations
 	// fsGroup := config.ControllerUserID
 	pod := corev1.PodSpec{
+		InitContainers: []corev1.Container{
+			{
+				Name:    "sleepy",
+				Image:   "alpine",
+				Command: []string{"sleep", "10"},
+			},
+		},
 		Containers: s.ensureAttacherContainersSpec(),
 		Volumes:    s.ensureVolumes(),
 		//		SecurityContext: &corev1.PodSecurityContext{
@@ -437,6 +444,13 @@ func (s *csiControllerSyncer) ensureProvisionerPodSpec(secrets []corev1.LocalObj
 	tolerations := s.driver.Spec.Tolerations
 	// fsGroup := config.ControllerUserID
 	pod := corev1.PodSpec{
+		InitContainers: []corev1.Container{
+			{
+				Name:    "sleepy",
+				Image:   "alpine",
+				Command: []string{"sleep", "10"},
+			},
+		},
 		Containers: s.ensureProvisionerContainersSpec(),
 		Volumes:    s.ensureVolumes(),
 		//		SecurityContext: &corev1.PodSecurityContext{
@@ -463,6 +477,13 @@ func (s *csiControllerSyncer) ensureSnapshotterPodSpec(secrets []corev1.LocalObj
 	tolerations := s.driver.Spec.Tolerations
 	// fsGroup := config.ControllerUserID
 	pod := corev1.PodSpec{
+		InitContainers: []corev1.Container{
+			{
+				Name:    "sleepy",
+				Image:   "alpine",
+				Command: []string{"sleep", "10"},
+			},
+		},
 		Containers: s.ensureSnapshotterContainersSpec(),
 		Volumes:    s.ensureVolumes(),
 		//		SecurityContext: &corev1.PodSecurityContext{
@@ -489,6 +510,13 @@ func (s *csiControllerSyncer) ensureResizerPodSpec(secrets []corev1.LocalObjectR
 	tolerations := s.driver.Spec.Tolerations
 	// fsGroup := config.ControllerUserID
 	pod := corev1.PodSpec{
+		InitContainers: []corev1.Container{
+			{
+				Name:    "sleepy",
+				Image:   "alpine",
+				Command: []string{"sleep", "10"},
+			},
+		},
 		Containers: s.ensureResizerContainersSpec(),
 		Volumes:    s.ensureVolumes(),
 		//		SecurityContext: &corev1.PodSecurityContext{
