@@ -148,7 +148,7 @@ func main() {
 	}
 
 	broadcaster := record.NewBroadcasterWithCorrelatorOptions(record.CorrelatorOptions{QPS: 1. / 30.})
-	broadcaster.StartStructuredLogging(2)
+	broadcaster.StartStructuredLogging(4)
 	broadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{
 		Interface: kubernetes.NewForConfigOrDie(mgr.GetConfig()).CoreV1().Events(""),
 	})
