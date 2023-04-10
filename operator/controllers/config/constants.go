@@ -164,3 +164,8 @@ const (
 	ErrorForbidden    = "403: Forbidden"
 	ErrorUnauthorized = "401: Unauthorized"
 )
+
+const (
+	EventBurstSize int     = 50
+	EventQPS       float32 = 1. / 15.
+)

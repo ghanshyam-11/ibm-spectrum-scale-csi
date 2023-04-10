@@ -32,6 +32,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -41,6 +42,7 @@ import (
 
 	csiv1 "github.com/IBM/ibm-spectrum-scale-csi/operator/api/v1"
 	"github.com/IBM/ibm-spectrum-scale-csi/operator/controllers"
+	"github.com/IBM/ibm-spectrum-scale-csi/operator/controllers/config"
 
 	configv1 "github.com/openshift/api/config/v1"
 	securityv1 "github.com/openshift/api/security/v1"
@@ -147,16 +149,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	broadcaster := record.NewBroadcasterWithCorrelatorOptions(record.CorrelatorOptions{QPS: 1. / 30.})
-	broadcaster.StartStructuredLogging(4)
-	broadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{
-		Interface: kubernetes.NewForConfigOrDie(mgr.GetConfig()).CoreV1().Events(""),
-	})
-
 	if err = (&controllers.CSIScaleOperatorReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: broadcaster.NewRecorder(scheme, corev1.EventSource{Component: "CSIScaleOperator"}),
+		Recorder: createEventRecorder(mgr.GetConfig()),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CSIScaleOperator")
 		os.Exit(1)
@@ -177,4 +173,18 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func createEventRecorder(kubeClient *rest.Config) record.EventRecorder {
+	eventBroadcaster := record.NewBroadcasterWithCorrelatorOptions(
+		record.CorrelatorOptions{
+			BurstSize: config.EventBurstSize,
+			QPS:       config.EventQPS,
+		},
+	)
+	eventBroadcaster.StartStructuredLogging(4)
+	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{
+		Interface: kubernetes.NewForConfigOrDie(kubeClient).CoreV1().Events(""),
+	})
+	return eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "CSIScaleOperator"})
 }
